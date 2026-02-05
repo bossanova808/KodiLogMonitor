@@ -34,7 +34,5 @@ A compiled Windows binary is available, and the Python source code can be used t
 
 - Python 3.x
 - Access to a valid `Kodi.log` file
-# - Required dependencies (if any — update this list):
-  # ```bash
-  # pip install -r requirements.txt
+
 
