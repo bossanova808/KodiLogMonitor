@@ -1,8 +1,6 @@
 # 📂 Kodi Log Monitor v1.1.3
 
-A lightweight and intuitive real-time log viewer for Kodi. It helps users and developers track events, troubleshoot errors, and monitor system status through a clean, color-coded interface.
-
-**The program also allows for simple editing of the Kodi log file even when Kodi is not running.**
+A lightweight and intuitive real-time log viewer or a simple log editor for Kodi. It helps users and developers track events, troubleshoot errors, and monitor system status through a clean, color-coded interface.
 
 ![screenshot](https://github.com/user-attachments/assets/c3635d2b-35ff-4688-adfc-ba5055481c38)
 
