@@ -8,36 +8,50 @@ import sys
 import locale
 
 # --- CONFIGURATION ---
-APP_VERSION = "v1.1" 
+APP_VERSION = "v1.1.2" 
 CONFIG_FILE = ".kodi_monitor_config"
 ICON_NAME = "logo.ico"
 # ----------------------------
 
 LANGS = {
     "FR": {
-        "log": "📂 LOG", "sum": "📝 RÉSUMÉ", "exp": "💾 EXPORT", "clr": "🗑️", "all": "TOUT", "info": "INFO", "warn": "WARN", "err": "ERR",
+        "log": "📂 LOG", "sum": "📝 RÉSUMÉ", "exp": "💾 EXPORT", "clr": "🗑️ VIDER", "all": "TOUT", "info": "INFO", "warn": "WARNING", "err": "ERROR",
         "ready": "Prêt", "sel": "Sélectionnez un log.", "sys_sum": "\n--- RÉSUMÉ SYSTÈME ---\n", "loading": "Chargement...", "reset": "\n--- FICHIER RÉINITIALISÉ PAR KODI ---\n",
-        "stats": " | 📈 Filtre: {} / Total: {} | 📁 Taille: {}"
+        "stats": " | 📈 {}{} : {} / {} lignes | 📁 {}",
+        "stats_simple": " | 📈 TOTAL : {} lignes | 📁 {}"
     },
     "EN": {
-        "log": "📂 LOG", "sum": "📝 SUMMARY", "exp": "💾 EXPORT", "clr": "🗑️", "all": "ALL", "info": "INFO", "warn": "WARN", "err": "ERR",
+        "log": "📂 LOG", "sum": "📝 SUMMARY", "exp": "💾 EXPORT", "clr": "🗑️ CLEAR", "all": "ALL", "info": "INFO", "warn": "WARNING", "err": "ERROR",
         "ready": "Ready", "sel": "Select a log.", "sys_sum": "\n--- SYSTEM SUMMARY ---\n", "loading": "Loading...", "reset": "\n--- FILE RESET BY KODI ---\n",
-        "stats": " | 📈 Filtered: {} / Total: {} | 📁 Size: {}"
+        "stats": " | 📈 {}{} : {} / {} lines | 📁 {}",
+        "stats_simple": " | 📈 TOTAL : {} lines | 📁 {}"
+    },
+    "DE": {
+        "log": "📂 LOG", "sum": "📝 ÜBERSICHT", "exp": "💾 EXPORT", "clr": "🗑️ LÖSCHEN", "all": "ALLE", "info": "INFO", "warn": "WARNING", "err": "ERROR",
+        "ready": "Bereit", "sel": "Log auswählen.", "sys_sum": "\n--- SYSTEMÜBERSICHT ---\n", "loading": "Laden...", "reset": "\n--- DATEI VON KODI ZURÜCKGESETZT ---\n",
+        "stats": " | 📈 {}{} : {} / {} zeilen | 📁 {}",
+        "stats_simple": " | 📈 TOTAL : {} zeilen | 📁 {}"
+    },
+    "ES": {
+        "log": "📂 LOG", "sum": "📝 RESUMEN", "exp": "💾 EXPORT", "clr": "🗑️ LIMPIAR", "all": "TODO", "info": "INFO", "warn": "WARNING", "err": "ERROR",
+        "ready": "Listo", "sel": "Seleccione un log.", "sys_sum": "\n--- RESUMEN DEL SISTEMA ---\n", "loading": "Cargando...", "reset": "\n--- ARCHIVO REINICIADO POR KODI ---\n",
+        "stats": " | 📈 {}{} : {} / {} líneas | 📁 {}",
+        "stats_simple": " | 📈 TOTAL : {} líneas | 📁 {}"
     }
 }
 
 class KodiLogMonitor:
     def __init__(self, root):
         self.root = root
-        self.root.title(f"Kodi Log Monitor {APP_VERSION}") 
-        self.root.geometry("1200x850")
+        self.root.title(f"Kodi Log Monitor") 
+        # Taille par défaut si aucune config n'existe
+        self.window_geometry = "1200x850"
         self.root.configure(bg="#1e1e1e")
         self.set_window_icon()
         
         self.log_file_path = ""
         self.running = False
-        self.total_lines = 0
-        self.filtered_lines_count = 0
+        self.monitor_thread = None
         self.load_full_file = tk.BooleanVar(value=False)
         self.wrap_mode = tk.BooleanVar(value=False)
         self.is_paused = tk.BooleanVar(value=False)
@@ -51,8 +65,19 @@ class KodiLogMonitor:
         self.current_filter_tag.trace_add("write", self.trigger_refresh)
         self.search_query.trace_add("write", self.on_search_change)
         
+        # Intercepter la fermeture de la fenêtre pour sauvegarder la taille
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        
         self.setup_ui()
         self.load_session()
+        # Appliquer la géométrie après le chargement de la session
+        self.root.geometry(self.window_geometry)
+
+    def on_closing(self):
+        """Sauvegarde la position et la taille avant de quitter."""
+        self.window_geometry = self.root.geometry()
+        self.save_session()
+        self.root.destroy()
 
     def detect_os_language(self):
         try:
@@ -99,10 +124,10 @@ class KodiLogMonitor:
         
         self.btn_full = tk.Checkbutton(left_group, text="∞", variable=self.load_full_file, indicatoron=0, bg="#3e3e42", fg="white", selectcolor="#007acc", relief="flat", borderwidth=0, font=("Segoe UI", 11, "bold"), padx=10, pady=2, command=self.toggle_full_load, cursor="hand2"); self.btn_full.pack(side=tk.LEFT, padx=2)
         self.btn_wrap = tk.Checkbutton(left_group, text="↵", variable=self.wrap_mode, indicatoron=0, bg="#3e3e42", fg="white", selectcolor="#007acc", relief="flat", borderwidth=0, font=("Segoe UI", 11, "bold"), padx=10, pady=2, command=self.apply_wrap_mode, cursor="hand2"); self.btn_wrap.pack(side=tk.LEFT, padx=2)
-        self.btn_pause = tk.Checkbutton(left_group, text="||", variable=self.is_paused, indicatoron=0, bg="#3e3e42", fg="white", selectcolor="#e81123", relief="flat", borderwidth=0, font=("Segoe UI", 9, "bold"), padx=12, pady=4, cursor="hand2"); self.btn_pause.pack(side=tk.LEFT, padx=2)
+        self.btn_pause = tk.Checkbutton(left_group, text="||", variable=self.is_paused, indicatoron=0, bg="#3e3e42", fg="white", selectcolor="#e81123", relief="flat", borderwidth=0, font=("Segoe UI", 9, "bold"), padx=12, pady=4, cursor="hand2", command=self.toggle_pause_scroll); self.btn_pause.pack(side=tk.LEFT, padx=2)
         
         right_group = tk.Frame(header, bg="#2d2d2d"); right_group.pack(side=tk.RIGHT, fill=tk.Y)
-        self.lang_menu = tk.OptionMenu(right_group, self.current_lang, *LANGS.keys(), command=lambda _: self.change_language())
+        self.lang_menu = tk.OptionMenu(right_group, self.current_lang, *sorted(LANGS.keys()), command=lambda _: self.change_language())
         self.lang_menu.config(bg="#3e3e42", fg="white", relief="flat", borderwidth=0, font=("Segoe UI", 8, "bold"), width=3, cursor="hand2"); self.lang_menu.pack(side=tk.LEFT, padx=5)
         for txt, cmd in [("-", self.decrease_font), ("+", self.increase_font)]:
             b = tk.Button(right_group, text=txt, command=cmd, **btn_style); b.pack(side=tk.LEFT, padx=1)
@@ -115,31 +140,46 @@ class KodiLogMonitor:
         self.loading_label = tk.Label(self.overlay, text="", bg="#1e1e1e", fg="#ffffff", font=("Segoe UI", 12, "bold")); self.loading_label.pack(expand=True)
         
         footer = tk.Frame(self.root, bg="#2d2d2d", padx=15, pady=3); footer.grid(row=2, column=0, sticky="ew")
-        self.footer_var = tk.StringVar()
-        self.stats_var = tk.StringVar()
-        
+        self.footer_var = tk.StringVar(); self.stats_var = tk.StringVar()
         tk.Label(footer, textvariable=self.footer_var, anchor=tk.W, fg="#ffffff", bg="#2d2d2d", font=("Segoe UI", 8, "bold")).pack(side=tk.LEFT)
         tk.Label(footer, textvariable=self.stats_var, anchor=tk.W, fg="#ffffff", bg="#2d2d2d", font=("Segoe UI", 8, "bold")).pack(side=tk.LEFT)
-        
-        tk.Label(footer, text=f"Kodi Log Monitor {APP_VERSION}", anchor=tk.E, fg="#555555", bg="#2d2d2d", font=("Segoe UI", 8, "italic")).pack(side=tk.RIGHT)
+        tk.Label(footer, text=f"KODI LOG MONITOR {APP_VERSION}", anchor=tk.E, fg="#e0e0e0", bg="#2d2d2d", font=("Segoe UI", 8, "bold"), padx=10).pack(side=tk.RIGHT)
         self.update_filter_button_colors()
-
-    def get_file_size_info(self):
-        if not self.log_file_path: return "0 KB"
-        try:
-            size_bytes = os.path.getsize(self.log_file_path)
-            for unit in ['B', 'KB', 'MB', 'GB']:
-                if size_bytes < 1024: return f"{size_bytes:.2f} {unit}"
-                size_bytes /= 1024
-        except: return "N/A"
 
     def update_stats(self):
         if not self.log_file_path: 
-            self.stats_var.set("")
-            return
+            self.stats_var.set(""); return
         l = LANGS.get(self.current_lang.get(), LANGS["EN"])
-        size_str = self.get_file_size_info()
-        self.stats_var.set(l["stats"].format(self.filtered_lines_count, self.total_lines, size_str))
+        tag_f = self.current_filter_tag.get()
+        query = self.search_query.get()
+        size_str, real_total = self.get_file_info()
+        
+        if tag_f == "all" and not query:
+            self.stats_var.set(l["stats_simple"].format(real_total, size_str))
+        else:
+            lang_key = {"all":"all","info":"info","warning":"warn","error":"err"}[tag_f]
+            log_type_label = l.get(lang_key, tag_f.upper())
+            kw_display = f" + KEYWORD: '{query}'" if query else ""
+            content = self.txt_area.get('1.0', 'end-1c')
+            display_count = len(content.splitlines()) if content.strip() else 0
+            self.stats_var.set(l["stats"].format(log_type_label, kw_display, display_count, real_total, size_str))
+
+    def get_file_info(self):
+        if not self.log_file_path or not os.path.exists(self.log_file_path): return "0 KB", 0
+        try:
+            size_bytes = os.path.getsize(self.log_file_path)
+            with open(self.log_file_path, 'rb') as f:
+                line_count = sum(1 for _ in f)
+            size_str = "0 KB"; temp_size = size_bytes
+            for unit in ['B', 'KB', 'MB', 'GB']:
+                if temp_size < 1024: 
+                    size_str = f"{temp_size:.2f} {unit}"; break
+                temp_size /= 1024
+            return size_str, line_count
+        except: return "N/A", 0
+
+    def toggle_pause_scroll(self):
+        if not self.is_paused.get() and self.log_file_path: self.txt_area.see(tk.END)
 
     def on_search_change(self, *args):
         if self.search_query.get(): self.btn_clear_search.pack(side=tk.LEFT, padx=(0, 2))
@@ -156,86 +196,93 @@ class KodiLogMonitor:
 
     def trigger_refresh(self, *args):
         self.update_filter_button_colors()
-        if self.log_file_path and self.running: self.start_monitoring(self.log_file_path, save=False)
+        if self.log_file_path: self.start_monitoring(self.log_file_path, save=False)
 
     def start_monitoring(self, path, save=True):
-        self.running = False; self.log_file_path = path; self.total_lines = 0; self.filtered_lines_count = 0; self.retranslate_ui()
+        self.running = False 
+        self.log_file_path = path
+        self.retranslate_ui()
         if save: self.save_session()
-        self.show_loading(True); self.txt_area.delete('1.0', tk.END)
-        self.running = True; threading.Thread(target=self.monitor_loop, daemon=True).start()
+        self.txt_area.config(state=tk.NORMAL); self.txt_area.delete('1.0', tk.END)
+        self.update_stats(); self.show_loading(True)
+        self.root.after(200, self._launch_thread) 
+
+    def _launch_thread(self):
+        self.running = True
+        self.monitor_thread = threading.Thread(target=self.monitor_loop, daemon=True); self.monitor_thread.start()
 
     def monitor_loop(self):
         try:
             with open(self.log_file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                if self.load_full_file.get(): lines = f.readlines()
+                if self.load_full_file.get(): f.seek(0)
                 else:
-                    f.seek(0, os.SEEK_END); f.seek(max(0, f.tell() - 250000)); lines = f.readlines()[-1000:]
-                
-                self.total_lines = len(lines)
-                to_display = []
-                for l_raw in lines:
-                    data = self.get_line_data(l_raw)
-                    if data:
-                        to_display.append(data)
-                        self.filtered_lines_count += 1
-                
+                    f.seek(0, os.SEEK_END); f.seek(max(0, f.tell() - 250000))
+                lines = f.readlines()
+                if not self.load_full_file.get(): lines = lines[-1000:]
+                to_display = [d for l in lines if (d := self.get_line_data(l))]
                 self.root.after(0, self.bulk_insert, to_display)
-                
                 f.seek(0, os.SEEK_END); last_pos = f.tell()
                 while self.running:
+                    if not os.path.exists(self.log_file_path): break
                     if os.path.getsize(self.log_file_path) < last_pos:
-                        self.root.after(0, self.start_monitoring, self.log_file_path, False); break
+                        self.root.after(0, self.start_monitoring, self.log_file_path, False); return 
                     line = f.readline()
                     if not line: self.root.after(0, self.update_stats); time.sleep(0.5); continue
-                    last_pos = f.tell(); self.total_lines += 1
-                    data = self.get_line_data(line)
-                    if data:
-                        self.filtered_lines_count += 1
-                        self.root.after(0, self.append_to_gui, data[0], data[1])
-                    else:
-                        self.root.after(0, self.update_stats)
-        except: self.show_loading(False)
+                    last_pos = f.tell(); data = self.get_line_data(line)
+                    if data: self.root.after(0, self.append_to_gui, data[0], data[1])
+                    else: self.root.after(0, self.update_stats)
+        except: self.root.after(0, self.show_loading, False)
 
     def get_line_data(self, line):
-        low = line.lower(); tag_f = self.current_filter_tag.get(); query = self.search_query.get().lower()
-        if (tag_f == "all" or f" {tag_f} " in low) and (not query or query in low):
+        if not line or line.strip() == "": return None
+        low = line.lower(); tag_f = self.current_filter_tag.get(); q = self.search_query.get().lower()
+        if (tag_f == "all" or f" {tag_f} " in low) and (not q or q in low):
             tag = "error" if " error " in low else "warning" if " warning " in low else "info" if " info " in low else None
             return (line, tag)
         return None
 
     def bulk_insert(self, data_list):
+        if not self.running: return
         self.txt_area.config(state=tk.NORMAL)
         for text, tag in data_list: self.txt_area.insert(tk.END, text, tag)
         if not self.is_paused.get(): self.txt_area.see(tk.END)
         self.update_stats(); self.show_loading(False)
 
     def append_to_gui(self, text, tag):
+        if not self.running: return
         self.txt_area.insert(tk.END, text, tag)
-        if not self.is_paused.get() and self.txt_area.yview()[1] > 0.90: self.txt_area.see(tk.END)
+        if not self.is_paused.get(): self.txt_area.see(tk.END)
         self.update_stats()
 
-    def clear_console(self): self.txt_area.delete('1.0', tk.END); self.total_lines = 0; self.filtered_lines_count = 0; self.update_stats()
+    def clear_console(self): 
+        self.txt_area.config(state=tk.NORMAL); self.txt_area.delete('1.0', tk.END); self.update_stats()
+
     def apply_wrap_mode(self): self.txt_area.config(wrap=tk.WORD if self.wrap_mode.get() else tk.NONE)
     def toggle_full_load(self): self.save_session(); self.start_monitoring(self.log_file_path, save=False)
+    
     def show_loading(self, state):
         if state:
             l = LANGS.get(self.current_lang.get(), LANGS["EN"])
             self.loading_label.config(text=l["loading"]); self.overlay.grid(row=0, column=0, sticky="nsew"); self.root.update_idletasks()
         else: self.overlay.grid_forget()
+
     def change_language(self): self.retranslate_ui(); self.save_session()
     def retranslate_ui(self):
         l = LANGS.get(self.current_lang.get(), LANGS["EN"])
         self.btn_log.config(text=l["log"]); self.btn_sum.config(text=l["sum"]); self.btn_exp.config(text=l["exp"]); self.btn_clr.config(text=l["clr"])
-        for rb, mode in self.filter_radios: 
-            tag_map = {"all": "all", "info": "info", "warning": "warn", "error": "err"}
-            rb.config(text=l[tag_map[mode]])
-        self.footer_var.set(l["sel"] if not self.log_file_path else f"📍 {self.log_file_path}")
-        self.update_stats()
+        tag_m = {"all": "all", "info": "info", "warning": "warn", "error": "err"}
+        for rb, mode in self.filter_radios: rb.config(text=l[tag_m[mode]])
+        self.footer_var.set(l["sel"] if not self.log_file_path else f"📍 {self.log_file_path}"); self.update_stats()
 
     def save_session(self):
         try:
             with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-                f.write(f"{self.log_file_path}\n{self.current_lang.get()}\n{'1' if self.load_full_file.get() else '0'}\n{self.font_size}")
+                # Ajout de la géométrie dans le fichier de config
+                f.write(f"{self.log_file_path}\n")
+                f.write(f"{self.current_lang.get()}\n")
+                f.write(f"{'1' if self.load_full_file.get() else '0'}\n")
+                f.write(f"{self.font_size}\n")
+                f.write(f"{self.window_geometry}")
         except: pass
 
     def load_session(self):
@@ -247,6 +294,8 @@ class KodiLogMonitor:
                     if len(lines) >= 2 and lines[1] in LANGS: self.current_lang.set(lines[1])
                     if len(lines) >= 3: self.load_full_file.set(lines[2] == "1")
                     if len(lines) >= 4: self.font_size = int(lines[3])
+                    # Chargement de la géométrie (si elle existe dans le fichier)
+                    if len(lines) >= 5: self.window_geometry = lines[4]
             except: pass
         self.retranslate_ui(); self.update_tags_config()
         if self.log_file_path: self.start_monitoring(self.log_file_path, save=False)
@@ -266,10 +315,10 @@ class KodiLogMonitor:
         l = LANGS.get(self.current_lang.get(), LANGS["EN"])
         try:
             with open(self.log_file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                match = re.search(r"(-+\n.*?Starting Kodi.*?-+\n)", f.read(), re.DOTALL)
-                if match: 
+                content = f.read(); starts = list(re.finditer(r"(-+\n.*?Starting Kodi.*?-+\n)", content, re.DOTALL))
+                if starts:
                     self.txt_area.insert(tk.END, l["sys_sum"], "summary")
-                    self.txt_area.insert(tk.END, match.group(1), "summary"); self.txt_area.see(tk.END)
+                    self.txt_area.insert(tk.END, starts[-1].group(1), "summary"); self.txt_area.see(tk.END)
         except: pass
 
     def export_log(self):
