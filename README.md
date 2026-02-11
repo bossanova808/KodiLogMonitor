@@ -19,6 +19,22 @@ Kodi generates a log file that records everything happening in the background. T
 
 ---
 
+### 🔍 Keyword Lists (v1.2.0+)
+You can now filter your logs using custom keyword lists:
+* **Custom Filtering**: Create a `.txt` file in the `list_keyword` folder (one keyword or phrase per line).
+* **Smart Highlighting**: The monitor only displays lines containing your keywords and highlights them for better visibility.
+* **Easy Management**: Use the 📁 button to open the folder and ♻️ to refresh your lists instantly.
+
+---
+
+### 🎨 Customization (v1.2.0+)
+The code is now designed for easy styling. You can find the **UI THEME** section at the very beginning of the script to change:
+* **Interface Colors**: Modify backgrounds for the text area, header, and buttons.
+* **Log & Highlight Colors**: Change the hex codes for `info`, `warning`, `error`, and the keyword `highlight`.
+* **Centralized Design**: No need to search through the functions; everything is at the top of the file.
+
+---
+
 ### 🚀 For Regular Users
 If you just want to use the tool without installing Python:
 
