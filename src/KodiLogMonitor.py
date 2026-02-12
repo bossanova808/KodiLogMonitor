@@ -1,3 +1,4 @@
+import ctypes
 import tkinter as tk
 from tkinter import filedialog, scrolledtext, messagebox, ttk
 import threading
@@ -14,6 +15,13 @@ APP_VERSION = "v1.2.1"
 CONFIG_FILE = ".kodi_monitor_config"
 ICON_NAME = "logo.ico"
 KEYWORD_DIR = "keyword_lists"
+
+# --- DPI AWARENESS on Windows ---
+try:
+    ctypes.windll.shcore.SetProcessDpiAwareness(1)
+except Exception as e:
+    print(e)
+    pass
 
 # --- UI THEME ---
 COLOR_BG_MAIN = "#1e1e1e"        
